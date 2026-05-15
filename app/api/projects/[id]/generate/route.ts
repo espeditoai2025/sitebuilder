@@ -10,77 +10,95 @@ export async function POST(
   _request: Request,
   context: { params: Promise<{ id: string }> }
 ) {
-  if (!hasDatabaseEnv()) {
-    return NextResponse.json({ error: "Neon database is not configured" }, { status: 500 });
-  }
+  let projectId = "";
 
-  const { id } = await context.params;
-  const user = await getCurrentUser();
+  try {
+    if (!hasDatabaseEnv()) {
+      return NextResponse.json({ error: "Database Neon non configurato" }, { status: 500 });
+    }
 
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+    const { id } = await context.params;
+    projectId = id;
+    const user = await getCurrentUser();
 
-  const [project] = await query<{
-    id: string;
-    website_url: string;
-    business_name: string | null;
-    industry: string | null;
-    goal: string | null;
-  }>("select * from projects where id = $1 and user_id = $2 limit 1", [id, user.id]);
+    if (!user) {
+      return NextResponse.json({ error: "Sessione scaduta. Accedi di nuovo." }, { status: 401 });
+    }
 
-  if (!project) {
-    return NextResponse.json({ error: "Project not found" }, { status: 404 });
-  }
+    const [project] = await query<{
+      id: string;
+      website_url: string;
+      business_name: string | null;
+      industry: string | null;
+      goal: string | null;
+    }>("select * from projects where id = $1 and user_id = $2 limit 1", [id, user.id]);
 
-  await query("update projects set status = 'analyzing', updated_at = now() where id = $1", [id]);
+    if (!project) {
+      return NextResponse.json({ error: "Progetto non trovato" }, { status: 404 });
+    }
 
-  const content = await scrapeWebsite(project.website_url, 5);
+    await query("delete from proposals where project_id = $1", [id]);
+    await query("delete from site_analyses where project_id = $1", [id]);
+    await query("update projects set status = 'analyzing', updated_at = now() where id = $1", [id]);
 
-  await query("update projects set status = 'generating_proposals', updated_at = now() where id = $1", [id]);
+    const content = await scrapeWebsite(project.website_url, 3);
 
-  const generated = await generateProjectIdeas({
-    websiteUrl: project.website_url,
-    businessName: project.business_name,
-    industry: project.industry,
-    goal: project.goal,
-    content
-  });
+    await query("update projects set status = 'generating_proposals', updated_at = now() where id = $1", [id]);
 
-  await query(
-    `insert into site_analyses
-     (project_id, raw_content, summary, detected_style, detected_colors, detected_structure)
-     values ($1, $2, $3, $4::jsonb, $5::jsonb, $6::jsonb)`,
-    [
-      id,
-      content.rawText,
-      generated.analysis.summary,
-      JSON.stringify(generated.analysis.detected_style),
-      JSON.stringify(generated.analysis.detected_colors),
-      JSON.stringify(generated.analysis.detected_structure)
-    ]
-  );
+    const generated = await generateProjectIdeas({
+      websiteUrl: project.website_url,
+      businessName: project.business_name,
+      industry: project.industry,
+      goal: project.goal,
+      content
+    });
 
-  for (const proposal of generated.proposals) {
     await query(
-      `insert into proposals
-       (project_id, variant, title, description, homepage_structure, visual_style, palette, copy, preview_data)
-       values ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7::jsonb, $8::jsonb, $9::jsonb)`,
+      `insert into site_analyses
+       (project_id, raw_content, summary, detected_style, detected_colors, detected_structure)
+       values ($1, $2, $3, $4::jsonb, $5::jsonb, $6::jsonb)`,
       [
         id,
-        proposal.variant,
-        proposal.title,
-        proposal.description,
-        JSON.stringify(proposal.homepage_structure),
-        JSON.stringify(proposal.visual_style),
-        JSON.stringify(proposal.palette),
-        JSON.stringify(proposal.copy),
-        JSON.stringify(proposal.preview_data)
+        content.rawText,
+        generated.analysis.summary,
+        JSON.stringify(generated.analysis.detected_style),
+        JSON.stringify(generated.analysis.detected_colors),
+        JSON.stringify(generated.analysis.detected_structure)
       ]
     );
+
+    for (const proposal of generated.proposals) {
+      await query(
+        `insert into proposals
+         (project_id, variant, title, description, homepage_structure, visual_style, palette, copy, preview_data)
+         values ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7::jsonb, $8::jsonb, $9::jsonb)`,
+        [
+          id,
+          proposal.variant,
+          proposal.title,
+          proposal.description,
+          JSON.stringify(proposal.homepage_structure),
+          JSON.stringify(proposal.visual_style),
+          JSON.stringify(proposal.palette),
+          JSON.stringify(proposal.copy),
+          JSON.stringify(proposal.preview_data)
+        ]
+      );
+    }
+
+    await query("update projects set status = 'proposals_ready', updated_at = now() where id = $1", [id]);
+
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    console.error("Generation failed", error);
+
+    if (projectId) {
+      await query("update projects set status = 'submitted', updated_at = now() where id = $1", [projectId]).catch(() => undefined);
+    }
+
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Generazione non riuscita" },
+      { status: 500 }
+    );
   }
-
-  await query("update projects set status = 'proposals_ready', updated_at = now() where id = $1", [id]);
-
-  return NextResponse.json({ ok: true });
 }

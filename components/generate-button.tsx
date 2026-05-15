@@ -44,9 +44,10 @@ export function GenerateButton({ projectId }: { projectId: string }) {
     });
 
     if (!response.ok) {
+      const data = await response.json().catch(() => null);
       setLoading(false);
       setProgress(0);
-      setError("Generazione non riuscita. Controlla URL e configurazione.");
+      setError(data?.error || "Generazione non riuscita. Controlla URL e configurazione.");
       return;
     }
 

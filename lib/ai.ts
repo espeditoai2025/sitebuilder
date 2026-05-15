@@ -50,16 +50,11 @@ export async function generateProjectIdeas(input: {
     `Pagine analizzate: ${input.content.pages.map((page) => `${page.title} (${page.url})`).join(" | ")}`,
     `Immagini disponibili: ${input.content.images.map((image) => `${image.alt}: ${image.url}`).join(" | ")}`,
     `Heading: ${input.content.headings.join(" | ")}`,
-    `Testi principali: ${input.content.paragraphs.join(" | ")}`,
-    `Testo complessivo estratto: ${input.content.rawText.slice(0, 12000)}`,
+    `Testi principali: ${input.content.paragraphs.slice(0, 14).join(" | ")}`,
+    `Testo complessivo estratto: ${input.content.rawText.slice(0, 3200)}`,
     "",
-    "Ogni proposta deve includere preview_data.html: un documento HTML completo e autonomo della homepage rinnovata.",
-    "Il documento deve contenere <html>, <head>, <style>, <body>, sezioni reali, testi italiani coerenti, responsive CSS e nessuno script.",
-    "Usa le immagini disponibili del sito originale se sono coerenti: hero fotografico, categorie, prodotti, team o luogo.",
-    "Non inventare URL immagini. Puoi usare solo URL presenti in Immagini disponibili. Se non ci sono immagini buone, crea un visual CSS curato.",
-    "Cura molto la qualita visuale: header completo, hero fotografico o editoriale, categorie/servizi, storia o proof, CTA e footer.",
-    "I link dell'anteprima devono essere solo anchor interne come #servizi, #chi-siamo, #contatti. Non usare URL relativi come /contatti o /dove-siamo.",
-    "La preview deve sembrare una homepage completa, non un wireframe.",
+    "Non generare HTML. Genera solo strategia, copy, sezioni e palette.",
+    "L'app costruira l'anteprima HTML usando template visuali e immagini reali del sito.",
     "",
     "Rispondi solo con questo schema JSON:",
     JSON.stringify({
@@ -83,8 +78,7 @@ export async function generateProjectIdeas(input: {
             cta: "string"
           },
           preview_data: {
-            layout: "string",
-            html: "<!doctype html><html>...</html>"
+            layout: "string"
           }
         }
       ]
@@ -107,7 +101,8 @@ export async function generateProjectIdeas(input: {
           content: prompt
         }
       ],
-      temperature: 0.5
+      temperature: 0.45,
+      max_tokens: 1400
     })
   });
 
@@ -123,10 +118,44 @@ export async function generateProjectIdeas(input: {
   }
 
   try {
-    return JSON.parse(extractJson(text)) as GeneratedResult;
+    return withGeneratedHtml(JSON.parse(extractJson(text)) as GeneratedResult, input);
   } catch {
     return buildFallbackResult(input);
   }
+}
+
+function withGeneratedHtml(
+  result: GeneratedResult,
+  input: {
+    websiteUrl: string;
+    businessName?: string | null;
+    industry?: string | null;
+    goal?: string | null;
+    content: SiteContent;
+  }
+) {
+  const images = input.content.images.map((image) => image.url);
+  const name = input.businessName || input.content.title || "Il tuo brand";
+
+  return {
+    ...result,
+    proposals: result.proposals.map((proposal) => ({
+      ...proposal,
+      preview_data: {
+        ...proposal.preview_data,
+        html: buildPreviewHtml({
+          name,
+          title: proposal.copy?.hero_title || proposal.title,
+          subtitle: proposal.copy?.hero_subtitle || proposal.description,
+          cta: proposal.copy?.cta || "Contattaci",
+          palette: proposal.palette?.length >= 3 ? proposal.palette : ["#111827", "#f5f0e8", "#e85d4f"],
+          sections: proposal.homepage_structure,
+          images,
+          mode: proposal.variant === "A" ? "classic" : "modern"
+        })
+      }
+    }))
+  };
 }
 
 function extractJson(text: string) {
@@ -233,6 +262,7 @@ function buildPreviewHtml(input: {
   subtitle: string;
   cta: string;
   palette: string[];
+  sections?: string[];
   images: string[];
   mode: "classic" | "modern";
 }) {
@@ -243,15 +273,20 @@ function buildPreviewHtml(input: {
   const visualBackground = heroImage
     ? `linear-gradient(90deg,rgba(0,0,0,.54),rgba(0,0,0,.08)),url('${escapeCssUrl(heroImage)}') center/cover`
     : `radial-gradient(circle at 70% 28%,${accent}66,transparent 32%),linear-gradient(135deg,${dark},#0b2238)`;
-  const categoryCards = ["Servizi principali", "Metodo di lavoro", "Qualita e fiducia"]
+  const sections = input.sections?.length ? input.sections.slice(0, 6) : ["Servizi principali", "Metodo di lavoro", "Qualita e fiducia"];
+  const categoryCards = sections.slice(0, 3)
     .map((title, index) => {
       const image = categoryImages[index];
       const media = image
         ? `<div class="card-media" style="background-image:url('${escapeCssUrl(image)}')"></div>`
         : `<div class="card-media empty">${String(index + 1).padStart(2, "0")}</div>`;
 
-      return `<div class="card">${media}<strong>0${index + 1}</strong><h2>${title}</h2><p>Contenuti e messaggi ripensati a partire dall'identita esistente del brand.</p></div>`;
+      return `<div class="card">${media}<strong>0${index + 1}</strong><h2>${escapeHtml(title)}</h2><p>Contenuti e messaggi ripensati a partire dall'identita esistente del brand.</p></div>`;
     })
+    .join("");
+  const extraSections = sections
+    .slice(3, 6)
+    .map((section) => `<li>${escapeHtml(section)}</li>`)
     .join("");
 
   return `<!doctype html>
@@ -260,15 +295,17 @@ function buildPreviewHtml(input: {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
-    *{box-sizing:border-box}body{margin:0;font-family:Arial,Helvetica,sans-serif;background:${light};color:${dark}}header{display:flex;justify-content:space-between;align-items:center;padding:28px 7vw;border-bottom:1px solid rgba(0,0,0,.08);background:rgba(255,255,255,.82);backdrop-filter:blur(12px)}.logo{font-weight:900;letter-spacing:.04em}.nav{display:flex;gap:22px;color:rgba(0,0,0,.62);font-size:14px}.hero{display:grid;grid-template-columns:.82fr 1.18fr;gap:48px;align-items:center;padding:58px 7vw}.eyebrow{color:${accent};font-weight:800;text-transform:uppercase;font-size:13px;letter-spacing:.12em}h1{font-size:clamp(42px,7vw,82px);line-height:.94;margin:16px 0 22px}p{font-size:18px;line-height:1.65}.cta{display:inline-block;background:${accent};color:white;padding:14px 20px;border-radius:${radius};font-weight:800;margin-top:12px}.visual{min-height:460px;border-radius:${radius};background:${visualBackground};box-shadow:0 26px 80px rgba(0,0,0,.18);position:relative;overflow:hidden}.visual:before{content:"";position:absolute;inset:42px;border:1px solid rgba(255,255,255,.22);border-radius:${radius}}.visual:after{content:"${input.mode === "classic" ? "Identita chiara" : "Nuova esperienza"}";position:absolute;left:42px;bottom:42px;color:white;font-size:34px;font-weight:900;max-width:280px;text-shadow:0 2px 16px rgba(0,0,0,.5)}.section{padding:54px 7vw}.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}.card{border:1px solid rgba(0,0,0,.08);border-radius:${radius};padding:18px;background:white;overflow:hidden}.card-media{height:150px;border-radius:calc(${radius} - 4px);background-size:cover;background-position:center;margin-bottom:18px}.card-media.empty{display:grid;place-items:center;background:${dark};color:white;font-size:34px;font-weight:900}.card strong{color:${accent};display:block;margin-bottom:10px}@media(max-width:760px){header,.nav{display:block}.hero,.cards{grid-template-columns:1fr}.hero{padding-top:44px}.visual{min-height:300px}}
+    *{box-sizing:border-box}body{margin:0;font-family:Arial,Helvetica,sans-serif;background:${light};color:${dark}}header{display:flex;justify-content:space-between;align-items:center;padding:28px 7vw;border-bottom:1px solid rgba(0,0,0,.08);background:rgba(255,255,255,.88);backdrop-filter:blur(12px);position:sticky;top:0;z-index:2}.logo{font-weight:900;letter-spacing:.04em;font-size:30px}.nav{display:flex;gap:22px;color:rgba(0,0,0,.62);font-size:14px}.nav a{color:inherit;text-decoration:none}.hero{display:grid;grid-template-columns:.82fr 1.18fr;gap:48px;align-items:center;padding:58px 7vw}.eyebrow{color:${accent};font-weight:800;text-transform:uppercase;font-size:13px;letter-spacing:.12em}h1{font-size:clamp(42px,7vw,82px);line-height:.94;margin:16px 0 22px}p{font-size:18px;line-height:1.65}.cta{display:inline-block;background:${accent};color:white;padding:14px 20px;border-radius:${radius};font-weight:800;margin-top:12px;text-decoration:none}.visual{min-height:460px;border-radius:${radius};background:${visualBackground};box-shadow:0 26px 80px rgba(0,0,0,.18);position:relative;overflow:hidden}.visual:before{content:"";position:absolute;inset:42px;border:1px solid rgba(255,255,255,.22);border-radius:${radius}}.visual:after{content:"${input.mode === "classic" ? "Identita chiara" : "Nuova esperienza"}";position:absolute;left:42px;bottom:42px;color:white;font-size:34px;font-weight:900;max-width:280px;text-shadow:0 2px 16px rgba(0,0,0,.5)}.section{padding:54px 7vw}.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}.card{border:1px solid rgba(0,0,0,.08);border-radius:${radius};padding:18px;background:white;overflow:hidden;box-shadow:0 18px 48px rgba(0,0,0,.08)}.card-media{height:150px;border-radius:calc(${radius} - 4px);background-size:cover;background-position:center;margin-bottom:18px}.card-media.empty{display:grid;place-items:center;background:${dark};color:white;font-size:34px;font-weight:900}.card strong{color:${accent};display:block;margin-bottom:10px}.story{display:grid;grid-template-columns:1fr 1fr;gap:34px;align-items:center;border-top:1px solid rgba(0,0,0,.08)}.story-box{background:white;border-radius:${radius};padding:34px;box-shadow:0 18px 48px rgba(0,0,0,.08)}.story ul{font-size:18px;line-height:1.8}.footer{background:${dark};color:white;padding:36px 7vw;display:flex;justify-content:space-between;gap:20px}@media(max-width:760px){header,.nav{display:block}.hero,.cards,.story{grid-template-columns:1fr}.hero{padding-top:44px}.visual{min-height:300px}.footer{display:block}}
   </style>
 </head>
 <body>
-  <header><div class="logo">${escapeHtml(input.name)}</div><nav class="nav"><span>Servizi</span><span>Metodo</span><span>Contatti</span></nav></header>
+  <header><div class="logo">${escapeHtml(input.name)}</div><nav class="nav"><a href="#servizi">Servizi</a><a href="#storia">Chi siamo</a><a href="#contatti">Contatti</a></nav></header>
   <main>
-    <section class="hero"><div><div class="eyebrow">Restyling sito web</div><h1>${escapeHtml(input.title)}</h1><p>${escapeHtml(input.subtitle)}</p><a class="cta">${escapeHtml(input.cta)}</a></div><div class="visual"></div></section>
-    <section class="section"><div class="cards">${categoryCards}</div></section>
+    <section class="hero"><div><div class="eyebrow">Restyling sito web</div><h1>${escapeHtml(input.title)}</h1><p>${escapeHtml(input.subtitle)}</p><a class="cta" href="#contatti">${escapeHtml(input.cta)}</a></div><div class="visual"></div></section>
+    <section class="section" id="servizi"><div class="cards">${categoryCards}</div></section>
+    <section class="section story" id="storia"><div class="story-box"><div class="eyebrow">Percorso</div><h2>Una homepage piu chiara, credibile e orientata al contatto.</h2><p>La nuova direzione conserva i contenuti importanti e li organizza in una narrazione piu immediata.</p></div><div class="story-box"><ul>${extraSections || "<li>Identita visiva coerente</li><li>Struttura responsive</li><li>Call to action piu chiare</li>"}</ul></div></section>
   </main>
+  <footer class="footer" id="contatti"><strong>${escapeHtml(input.name)}</strong><span>Contatti - Richiesta informazioni - Preventivo</span></footer>
 </body>
 </html>`;
 }
