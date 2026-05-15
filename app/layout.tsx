@@ -19,7 +19,9 @@ export default function RootLayout({
         <div className="shell">
           <header className="topbar">
             <Link className="brand" href="/">
-              SiteBuilder AI
+              <span>PCS</span>
+              <i />
+              <strong>AI</strong>
             </Link>
             <nav className="nav">
               <Link className="button ghost" href="/dashboard">

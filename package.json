@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint ."
+    "lint": "eslint . --ignore-pattern .next/** --ignore-pattern .vercel/** --ignore-pattern node_modules/** --ignore-pattern next-env.d.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.6.1",
