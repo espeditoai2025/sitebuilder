@@ -4,6 +4,7 @@ export type SiteContent = {
   paragraphs: string[];
   rawText: string;
   pages: SitePage[];
+  images: SiteImage[];
 };
 
 export type SitePage = {
@@ -12,6 +13,13 @@ export type SitePage = {
   headings: string[];
   paragraphs: string[];
   rawText: string;
+  images: SiteImage[];
+};
+
+export type SiteImage = {
+  url: string;
+  alt: string;
+  sourcePage: string;
 };
 
 export async function scrapeWebsite(url: string, maxPages = 5): Promise<SiteContent> {
@@ -29,6 +37,7 @@ export async function scrapeWebsite(url: string, maxPages = 5): Promise<SiteCont
   const title = homePage.title || "Sito esistente";
   const headings = unique(pages.flatMap((page) => page.headings)).slice(0, 24);
   const paragraphs = unique(pages.flatMap((page) => page.paragraphs)).slice(0, 36);
+  const images = uniqueImages(pages.flatMap((page) => page.images)).slice(0, 14);
   const rawText = pages.map((page) => `[${page.title}]\n${page.rawText}`).join("\n\n").slice(0, 14000);
 
   return {
@@ -36,7 +45,8 @@ export async function scrapeWebsite(url: string, maxPages = 5): Promise<SiteCont
     headings,
     paragraphs,
     rawText,
-    pages
+    pages,
+    images
   };
 }
 
@@ -48,7 +58,8 @@ export function extractSiteContent(html: string): SiteContent {
     headings: page.headings,
     paragraphs: page.paragraphs,
     rawText: page.rawText,
-    pages: [page]
+    pages: [page],
+    images: page.images
   };
 }
 
@@ -63,6 +74,7 @@ function extractPageContent(url: string, html: string): SitePage {
   const paragraphs = collectMatches(withoutNoise, /<p[^>]*>([\s\S]*?)<\/p>/gi)
     .filter((text) => text.length > 30)
     .slice(0, 18);
+  const images = collectImages(url, html);
 
   const rawText = cleanText(withoutNoise.replace(/<[^>]+>/g, " ")).slice(0, 8000);
 
@@ -71,7 +83,8 @@ function extractPageContent(url: string, html: string): SitePage {
     title: cleanText(title),
     headings,
     paragraphs,
-    rawText
+    rawText,
+    images
   };
 }
 
@@ -131,8 +144,88 @@ function collectInternalLinks(baseUrl: string, html: string) {
   return [...links].sort((a, b) => scoreLink(b) - scoreLink(a));
 }
 
+function collectImages(baseUrl: string, html: string): SiteImage[] {
+  if (!baseUrl) {
+    return [];
+  }
+
+  const base = new URL(baseUrl);
+  const images: SiteImage[] = [];
+  const metaImage = matchAttribute(html, /<meta[^>]+(?:property|name)=["']og:image["'][^>]+content=["']([^"']+)["'][^>]*>/i);
+
+  if (metaImage) {
+    addImage(images, base, metaImage, "Immagine principale", baseUrl);
+  }
+
+  const imgMatches = [...html.matchAll(/<img\b[^>]*>/gi)];
+
+  for (const match of imgMatches) {
+    const tag = match[0];
+    const src = matchAttribute(tag, /\bsrc=["']([^"']+)["']/i) || firstSrcsetImage(matchAttribute(tag, /\bsrcset=["']([^"']+)["']/i));
+    const alt = matchAttribute(tag, /\balt=["']([^"']*)["']/i);
+
+    if (src) {
+      addImage(images, base, src, alt || "Immagine sito", baseUrl);
+    }
+  }
+
+  return uniqueImages(images).sort((a, b) => scoreImage(b) - scoreImage(a)).slice(0, 10);
+}
+
+function addImage(images: SiteImage[], base: URL, src: string, alt: string, sourcePage: string) {
+  try {
+    const url = new URL(src, base);
+
+    if (!["http:", "https:"].includes(url.protocol) || !isLikelyImageUrl(url.pathname)) {
+      return;
+    }
+
+    if (/\.(svg|gif|ico)$/i.test(url.pathname)) {
+      return;
+    }
+
+    images.push({
+      url: url.toString(),
+      alt: cleanText(alt),
+      sourcePage
+    });
+  } catch {
+    // Ignore invalid image URLs.
+  }
+}
+
+function matchAttribute(value: string, pattern: RegExp) {
+  const match = value.match(pattern);
+  return match ? match[1] : "";
+}
+
+function firstSrcsetImage(srcset: string) {
+  return srcset.split(",")[0]?.trim().split(/\s+/)[0] || "";
+}
+
+function scoreImage(image: SiteImage) {
+  const value = `${image.url} ${image.alt}`.toLowerCase();
+  let score = 0;
+
+  for (const keyword of ["hero", "slide", "cover", "home", "prodot", "servizi", "gallery", "pane", "food", "team"]) {
+    if (value.includes(keyword)) {
+      score += 3;
+    }
+  }
+
+  if (/\.(jpg|jpeg|png|webp)$/i.test(image.url)) {
+    score += 1;
+  }
+
+  return score;
+}
+
 function isAssetUrl(pathname: string) {
   return /\.(pdf|jpg|jpeg|png|gif|webp|svg|zip|mp4|mp3|doc|docx|xls|xlsx)$/i.test(pathname);
+}
+
+function isLikelyImageUrl(pathname: string) {
+  return /\.(jpg|jpeg|png|webp)$/i.test(pathname) || !/\.[a-z0-9]{2,5}$/i.test(pathname);
 }
 
 function scoreLink(url: string) {
@@ -150,6 +243,18 @@ function scoreLink(url: string) {
 
 function unique(values: string[]) {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+}
+
+function uniqueImages(images: SiteImage[]) {
+  const seen = new Set<string>();
+  return images.filter((image) => {
+    if (seen.has(image.url)) {
+      return false;
+    }
+
+    seen.add(image.url);
+    return true;
+  });
 }
 
 function matchText(value: string, pattern: RegExp) {
