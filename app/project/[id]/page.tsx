@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { ReceiptText } from "lucide-react";
 import { GenerateButton } from "@/components/generate-button";
 import { ProposalCard } from "@/components/proposal-card";
+import { canSeeAdmin } from "@/lib/admin";
 import { getCurrentUser } from "@/lib/auth";
 import { hasDatabaseEnv, query as dbQuery } from "@/lib/db";
 import { formatStatus } from "@/lib/status";
@@ -26,6 +27,7 @@ export default async function ProjectPage({
     redirect("/login");
   }
 
+  const isAdmin = canSeeAdmin(user);
   const [project] = await dbQuery<{
     id: string;
     website_url: string;
@@ -33,7 +35,7 @@ export default async function ProjectPage({
     industry: string | null;
     goal: string | null;
     status: string;
-  }>("select * from projects where id = $1 and user_id = $2 limit 1", [id, user.id]);
+  }>(isAdmin ? "select * from projects where id = $1 limit 1" : "select * from projects where id = $1 and user_id = $2 limit 1", isAdmin ? [id] : [id, user.id]);
 
   if (!project) {
     redirect("/dashboard");

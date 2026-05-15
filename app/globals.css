@@ -680,6 +680,65 @@ textarea {
   padding: 14px 16px;
 }
 
+.admin-page {
+  max-width: 1280px;
+}
+
+.admin-stats {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 26px 0;
+}
+
+.admin-stats strong {
+  color: white;
+  display: block;
+  font-size: 36px;
+  margin-top: 8px;
+}
+
+.admin-section {
+  margin-top: 34px;
+}
+
+.admin-section h2 {
+  font-size: clamp(28px, 4vw, 44px);
+  margin: 0 0 16px;
+}
+
+.admin-price-form {
+  display: grid;
+  gap: 14px;
+}
+
+.check-row {
+  align-items: center;
+  color: var(--muted);
+  display: inline-flex;
+  gap: 10px;
+}
+
+.admin-table {
+  display: grid;
+  gap: 10px;
+}
+
+.admin-row {
+  align-items: center;
+  background: rgba(7, 28, 51, 0.72);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  padding: 14px;
+}
+
+.admin-row p {
+  margin: 4px 0 0;
+}
+
 @media (max-width: 820px) {
   .home-hero,
   .hero,
@@ -719,6 +778,11 @@ textarea {
   }
 
   .project-row {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-stats,
+  .admin-row {
     grid-template-columns: 1fr;
   }
 }

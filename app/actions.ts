@@ -65,7 +65,7 @@ export async function selectProposal(formData: FormData) {
   await query("update proposals set is_selected = false where project_id = $1", [projectId]);
   await query("update proposals set is_selected = true where id = $1", [proposalId]);
 
-  const quote = buildQuote({ project, proposal });
+  const quote = await buildQuote({ project, proposal });
   const [newQuote] = await query<{ id: string }>(
     `insert into quotes (project_id, proposal_id, price, currency, scope, timeline, status)
      values ($1, $2, $3, $4, $5::jsonb, $6, 'generated')

@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { CheckCircle2 } from "lucide-react";
 import { confirmQuote } from "@/app/actions";
+import { canSeeAdmin } from "@/lib/admin";
 import { getCurrentUser } from "@/lib/auth";
 import { hasDatabaseEnv, query } from "@/lib/db";
 
@@ -20,10 +21,11 @@ export default async function QuotePage({
     redirect("/login");
   }
 
-  const [project] = await query<{ id: string }>("select id from projects where id = $1 and user_id = $2 limit 1", [
-    id,
-    user.id
-  ]);
+  const isAdmin = canSeeAdmin(user);
+  const [project] = await query<{ id: string }>(
+    isAdmin ? "select id from projects where id = $1 limit 1" : "select id from projects where id = $1 and user_id = $2 limit 1",
+    isAdmin ? [id] : [id, user.id]
+  );
 
   if (!project) {
     redirect("/dashboard");
