@@ -45,7 +45,7 @@ npm.cmd run dev
 
 - `DATABASE_URL`
 - `OPENROUTER_API_KEY`
-- `OPENROUTER_MODEL`
+- `OPENROUTER_MODEL` consigliato: `openai/gpt-5.4-mini`
 - `RESEND_API_KEY`
 - `OWNER_EMAIL`
 - `NEXT_PUBLIC_SITE_URL`

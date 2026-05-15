@@ -96,7 +96,7 @@ export async function generateProjectIdeas(input: {
       "X-Title": process.env.OPENROUTER_SITE_NAME || "SiteBuilder PCS AI"
     },
     body: JSON.stringify({
-      model: process.env.OPENROUTER_MODEL || "openai/gpt-4o-mini",
+      model: process.env.OPENROUTER_MODEL || "openai/gpt-5.4-mini",
       messages: [
         {
           role: "user",
