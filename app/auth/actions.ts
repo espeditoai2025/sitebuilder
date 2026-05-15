@@ -2,47 +2,54 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { createClient, hasSupabaseEnv } from "@/lib/supabase/server";
+import { createSession, destroySession, hashPassword, verifyPassword } from "@/lib/auth";
+import { hasDatabaseEnv, query } from "@/lib/db";
 
 export async function login(formData: FormData) {
-  if (!hasSupabaseEnv()) {
+  if (!hasDatabaseEnv()) {
     redirect("/setup");
   }
 
-  const supabase = await createClient();
-  const email = String(formData.get("email") || "");
+  const email = String(formData.get("email") || "").trim().toLowerCase();
   const password = String(formData.get("password") || "");
 
-  const { error } = await supabase.auth.signInWithPassword({ email, password });
-  if (error) {
+  const users = await query<{ id: string; password_hash: string }>(
+    "select id, password_hash from app_users where email = $1 limit 1",
+    [email]
+  );
+  const user = users[0];
+
+  if (!user || !(await verifyPassword(password, user.password_hash))) {
     redirect("/login?error=Credenziali non valide");
   }
 
+  await createSession(user.id);
   revalidatePath("/", "layout");
   redirect("/dashboard");
 }
 
 export async function signup(formData: FormData) {
-  if (!hasSupabaseEnv()) {
+  if (!hasDatabaseEnv()) {
     redirect("/setup");
   }
 
-  const supabase = await createClient();
-  const email = String(formData.get("email") || "");
+  const email = String(formData.get("email") || "").trim().toLowerCase();
   const password = String(formData.get("password") || "");
   const fullName = String(formData.get("full_name") || "");
 
-  const { error } = await supabase.auth.signUp({
-    email,
-    password,
-    options: {
-      data: {
-        full_name: fullName
-      }
-    }
-  });
+  if (!email || password.length < 8) {
+    redirect("/signup?error=Inserisci email e password di almeno 8 caratteri");
+  }
 
-  if (error) {
+  try {
+    const passwordHash = await hashPassword(password);
+    const users = await query<{ id: string }>(
+      "insert into app_users (email, password_hash, full_name) values ($1, $2, $3) returning id",
+      [email, passwordHash, fullName || null]
+    );
+
+    await createSession(users[0].id);
+  } catch {
     redirect("/signup?error=Registrazione non riuscita");
   }
 
@@ -50,12 +57,11 @@ export async function signup(formData: FormData) {
 }
 
 export async function logout() {
-  if (!hasSupabaseEnv()) {
+  if (!hasDatabaseEnv()) {
     redirect("/");
   }
 
-  const supabase = await createClient();
-  await supabase.auth.signOut();
+  await destroySession();
   revalidatePath("/", "layout");
   redirect("/");
 }

@@ -1,28 +1,31 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Plus, ArrowRight } from "lucide-react";
-import { createClient, hasSupabaseEnv } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth";
+import { hasDatabaseEnv, query } from "@/lib/db";
 import { formatStatus } from "@/lib/status";
 
 export default async function DashboardPage() {
-  if (!hasSupabaseEnv()) {
+  if (!hasDatabaseEnv()) {
     redirect("/setup");
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
+  const user = await getCurrentUser();
 
   if (!user) {
     redirect("/login");
   }
 
-  const { data: projects } = await supabase
-    .from("projects")
-    .select("id, website_url, business_name, status, created_at")
-    .eq("user_id", user.id)
-    .order("created_at", { ascending: false });
+  const projects = await query<{
+    id: string;
+    website_url: string;
+    business_name: string | null;
+    status: string;
+    created_at: string;
+  }>(
+    "select id, website_url, business_name, status, created_at from projects where user_id = $1 order by created_at desc",
+    [user.id]
+  );
 
   return (
     <main className="container">

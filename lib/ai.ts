@@ -32,7 +32,7 @@ export async function generateProjectIdeas(input: {
   goal?: string | null;
   content: SiteContent;
 }): Promise<GeneratedResult> {
-  if (!process.env.OPENAI_API_KEY) {
+  if (!process.env.OPENROUTER_API_KEY) {
     return buildFallbackResult(input);
   }
 
@@ -77,15 +77,22 @@ export async function generateProjectIdeas(input: {
     })
   ].join("\n");
 
-  const response = await fetch("https://api.openai.com/v1/responses", {
+  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
+      Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+      "HTTP-Referer": process.env.OPENROUTER_SITE_URL || process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000",
+      "X-Title": process.env.OPENROUTER_SITE_NAME || "SiteBuilder PCS AI"
     },
     body: JSON.stringify({
-      model: process.env.OPENAI_MODEL || "gpt-4.1-mini",
-      input: prompt,
+      model: process.env.OPENROUTER_MODEL || "openai/gpt-4o-mini",
+      messages: [
+        {
+          role: "user",
+          content: prompt
+        }
+      ],
       temperature: 0.5
     })
   });
@@ -95,17 +102,28 @@ export async function generateProjectIdeas(input: {
   }
 
   const data = await response.json();
-  const text = data.output_text ?? data.output?.[0]?.content?.[0]?.text;
+  const text = data.choices?.[0]?.message?.content;
 
   if (!text) {
     return buildFallbackResult(input);
   }
 
   try {
-    return JSON.parse(text) as GeneratedResult;
+    return JSON.parse(extractJson(text)) as GeneratedResult;
   } catch {
     return buildFallbackResult(input);
   }
+}
+
+function extractJson(text: string) {
+  const trimmed = text.trim();
+  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
+
+  if (fenced?.[1]) {
+    return fenced[1].trim();
+  }
+
+  return trimmed;
 }
 
 function buildFallbackResult(input: {

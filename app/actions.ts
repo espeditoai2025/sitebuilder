@@ -2,18 +2,16 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { getCurrentUser } from "@/lib/auth";
+import { hasDatabaseEnv, query } from "@/lib/db";
 import { buildQuote } from "@/lib/quote";
-import { createClient, hasSupabaseEnv } from "@/lib/supabase/server";
 
 export async function createProject(formData: FormData) {
-  if (!hasSupabaseEnv()) {
+  if (!hasDatabaseEnv()) {
     redirect("/setup");
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
+  const user = await getCurrentUser();
 
   if (!user) {
     redirect("/login");
@@ -24,133 +22,100 @@ export async function createProject(formData: FormData) {
   const industry = String(formData.get("industry") || "");
   const goal = String(formData.get("goal") || "");
 
-  const { data, error } = await supabase
-    .from("projects")
-    .insert({
-      user_id: user.id,
-      website_url: websiteUrl,
-      business_name: businessName || null,
-      industry: industry || null,
-      goal: goal || null,
-      status: "submitted"
-    })
-    .select("id")
-    .single();
+  const projects = await query<{ id: string }>(
+    `insert into projects (user_id, website_url, business_name, industry, goal, status)
+     values ($1, $2, $3, $4, $5, 'submitted')
+     returning id`,
+    [user.id, websiteUrl, businessName || null, industry || null, goal || null]
+  );
+  const project = projects[0];
 
-  if (error || !data) {
+  if (!project) {
     redirect("/new-project?error=Impossibile creare il progetto");
   }
 
   revalidatePath("/dashboard");
-  redirect(`/project/${data.id}`);
+  redirect(`/project/${project.id}`);
 }
 
 export async function selectProposal(formData: FormData) {
-  if (!hasSupabaseEnv()) {
+  if (!hasDatabaseEnv()) {
     redirect("/setup");
   }
 
-  const supabase = await createClient();
   const projectId = String(formData.get("project_id") || "");
   const proposalId = String(formData.get("proposal_id") || "");
 
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
+  const user = await getCurrentUser();
 
   if (!user) {
     redirect("/login");
   }
 
-  const { data: project } = await supabase
-    .from("projects")
-    .select("*")
-    .eq("id", projectId)
-    .eq("user_id", user.id)
-    .single();
-
-  const { data: proposal } = await supabase
-    .from("proposals")
-    .select("*")
-    .eq("id", proposalId)
-    .eq("project_id", projectId)
-    .single();
+  const [project] = await query<{ id: string; website_url: string; industry: string | null; goal: string | null }>(
+    "select * from projects where id = $1 and user_id = $2 limit 1",
+    [projectId, user.id]
+  );
+  const [proposal] = await query<{
+    id: string;
+    variant: string;
+    homepage_structure: unknown;
+  }>("select * from proposals where id = $1 and project_id = $2 limit 1", [proposalId, projectId]);
 
   if (!project || !proposal) {
     redirect(`/project/${projectId}?error=Proposta non trovata`);
   }
 
-  await supabase.from("proposals").update({ is_selected: false }).eq("project_id", projectId);
-  await supabase.from("proposals").update({ is_selected: true }).eq("id", proposalId);
+  await query("update proposals set is_selected = false where project_id = $1", [projectId]);
+  await query("update proposals set is_selected = true where id = $1", [proposalId]);
 
   const quote = buildQuote({ project, proposal });
-  const { data: newQuote } = await supabase
-    .from("quotes")
-    .insert({
-      project_id: projectId,
-      proposal_id: proposalId,
-      price: quote.price,
-      currency: quote.currency,
-      scope: quote.scope,
-      timeline: quote.timeline,
-      status: "generated"
-    })
-    .select("id")
-    .single();
+  const [newQuote] = await query<{ id: string }>(
+    `insert into quotes (project_id, proposal_id, price, currency, scope, timeline, status)
+     values ($1, $2, $3, $4, $5::jsonb, $6, 'generated')
+     returning id`,
+    [projectId, proposalId, quote.price, quote.currency, JSON.stringify(quote.scope), quote.timeline]
+  );
 
-  await supabase
-    .from("projects")
-    .update({ status: "quote_generated", updated_at: new Date().toISOString() })
-    .eq("id", projectId);
+  await query("update projects set status = 'quote_generated', updated_at = now() where id = $1", [projectId]);
 
   revalidatePath(`/project/${projectId}`);
   redirect(newQuote ? `/project/${projectId}/quote/${newQuote.id}` : `/project/${projectId}`);
 }
 
 export async function confirmQuote(formData: FormData) {
-  if (!hasSupabaseEnv()) {
+  if (!hasDatabaseEnv()) {
     redirect("/setup");
   }
 
-  const supabase = await createClient();
   const projectId = String(formData.get("project_id") || "");
   const quoteId = String(formData.get("quote_id") || "");
 
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
+  const user = await getCurrentUser();
 
   if (!user) {
     redirect("/login");
   }
 
-  const { data: project } = await supabase
-    .from("projects")
-    .select("*")
-    .eq("id", projectId)
-    .eq("user_id", user.id)
-    .single();
+  const [project] = await query<{ id: string; website_url: string }>(
+    "select * from projects where id = $1 and user_id = $2 limit 1",
+    [projectId, user.id]
+  );
 
   if (!project) {
     redirect("/dashboard");
   }
 
-  await supabase
-    .from("quotes")
-    .update({ status: "confirmed", confirmed_at: new Date().toISOString() })
-    .eq("id", quoteId)
-    .eq("project_id", projectId);
+  await query("update quotes set status = 'confirmed', confirmed_at = now() where id = $1 and project_id = $2", [
+    quoteId,
+    projectId
+  ]);
 
-  await supabase
-    .from("projects")
-    .update({ status: "quote_confirmed", updated_at: new Date().toISOString() })
-    .eq("id", projectId);
+  await query("update projects set status = 'quote_confirmed', updated_at = now() where id = $1", [projectId]);
 
-  await supabase.from("notifications").insert({
-    project_id: projectId,
-    type: "quote_confirmed",
-    status: "pending"
-  });
+  await query("insert into notifications (project_id, type, status) values ($1, 'quote_confirmed', 'pending')", [
+    projectId
+  ]);
 
   await sendOwnerEmail({
     websiteUrl: project.website_url,

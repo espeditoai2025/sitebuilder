@@ -3,7 +3,8 @@ import { redirect } from "next/navigation";
 import { ReceiptText } from "lucide-react";
 import { GenerateButton } from "@/components/generate-button";
 import { ProposalCard } from "@/components/proposal-card";
-import { createClient, hasSupabaseEnv } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth";
+import { hasDatabaseEnv, query as dbQuery } from "@/lib/db";
 import { formatStatus } from "@/lib/status";
 
 export default async function ProjectPage({
@@ -13,36 +14,50 @@ export default async function ProjectPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ confirmed?: string; error?: string }>;
 }) {
-  if (!hasSupabaseEnv()) {
+  if (!hasDatabaseEnv()) {
     redirect("/setup");
   }
 
   const { id } = await params;
-  const query = await searchParams;
-  const supabase = await createClient();
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
+  const pageQuery = await searchParams;
+  const user = await getCurrentUser();
 
   if (!user) {
     redirect("/login");
   }
 
-  const { data: project } = await supabase
-    .from("projects")
-    .select("*")
-    .eq("id", id)
-    .eq("user_id", user.id)
-    .single();
+  const [project] = await dbQuery<{
+    id: string;
+    website_url: string;
+    business_name: string | null;
+    industry: string | null;
+    goal: string | null;
+    status: string;
+  }>("select * from projects where id = $1 and user_id = $2 limit 1", [id, user.id]);
 
   if (!project) {
     redirect("/dashboard");
   }
 
-  const [{ data: analyses }, { data: proposals }, { data: quotes }] = await Promise.all([
-    supabase.from("site_analyses").select("*").eq("project_id", id).order("created_at", { ascending: false }).limit(1),
-    supabase.from("proposals").select("*").eq("project_id", id).order("variant", { ascending: true }),
-    supabase.from("quotes").select("*").eq("project_id", id).order("created_at", { ascending: false }).limit(1)
+  const [analyses, proposals, quotes] = await Promise.all([
+    dbQuery<{
+      summary: string;
+      detected_colors: unknown;
+      detected_structure: unknown;
+    }>("select * from site_analyses where project_id = $1 order by created_at desc limit 1", [id]),
+    dbQuery<{
+      id: string;
+      project_id: string;
+      variant: string;
+      title: string;
+      description: string;
+      homepage_structure: unknown;
+      visual_style: unknown;
+      palette: unknown;
+      copy: unknown;
+      is_selected: boolean;
+    }>("select * from proposals where project_id = $1 order by variant asc", [id]),
+    dbQuery<{ id: string }>("select * from quotes where project_id = $1 order by created_at desc limit 1", [id])
   ]);
 
   const analysis = analyses?.[0];
@@ -56,8 +71,8 @@ export default async function ProjectPage({
 
   return (
     <main className="container">
-      {query.confirmed ? <p className="notice">Preventivo confermato. Lo stato del progetto e stato aggiornato.</p> : null}
-      {query.error ? <p className="notice">{query.error}</p> : null}
+      {pageQuery.confirmed ? <p className="notice">Preventivo confermato. Lo stato del progetto e stato aggiornato.</p> : null}
+      {pageQuery.error ? <p className="notice">{pageQuery.error}</p> : null}
 
       <div className="toolbar" style={{ justifyContent: "space-between" }}>
         <div>

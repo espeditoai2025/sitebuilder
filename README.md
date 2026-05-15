@@ -5,8 +5,9 @@ MVP per raccogliere richieste di restyling siti web, generare 2 proposte AI, far
 ## Stack
 
 - Next.js App Router
-- Supabase Auth + Postgres
-- OpenAI API per analisi e proposte
+- Neon Postgres
+- Autenticazione email/password con sessioni nel database
+- OpenRouter per analisi e proposte AI
 - Vercel per deploy
 - Resend opzionale per notifiche email
 
@@ -26,7 +27,7 @@ npm.cmd install
 
 2. Crea `.env.local` copiando `.env.example`.
 
-3. Crea le tabelle in Supabase usando `supabase/schema.sql`.
+3. Crea le tabelle in Neon usando `neon/schema.sql`.
 
 4. Avvia:
 
@@ -42,15 +43,14 @@ npm.cmd run dev
 
 ## Variabili ambiente
 
-- `NEXT_PUBLIC_SUPABASE_URL`
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-- `OPENAI_API_KEY`
-- `OPENAI_MODEL`
+- `DATABASE_URL`
+- `OPENROUTER_API_KEY`
+- `OPENROUTER_MODEL`
 - `RESEND_API_KEY`
 - `OWNER_EMAIL`
 - `NEXT_PUBLIC_SITE_URL`
 
-Senza `OPENAI_API_KEY`, la generazione usa contenuti demo per testare il flusso.
+Senza `OPENROUTER_API_KEY`, la generazione usa contenuti demo per testare il flusso.
 
 ## Deploy su Vercel
 
@@ -62,22 +62,19 @@ Senza `OPENAI_API_KEY`, la generazione usa contenuti demo per testare il flusso.
 6. Aggiungi le variabili ambiente elencate in `.env.example`.
 7. Esegui il deploy.
 
-## Setup Supabase
+## Setup Neon
 
-1. Crea un progetto Supabase.
+1. Apri Neon dal pannello Storage di Vercel.
 2. Apri **SQL Editor**.
-3. Incolla ed esegui `supabase/schema.sql`.
-4. Copia `Project URL` e `anon public key` nelle variabili Vercel:
-   - `NEXT_PUBLIC_SUPABASE_URL`
-   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-5. In **Authentication > URL Configuration**, aggiungi l'URL Vercel del progetto.
+3. Incolla ed esegui `neon/schema.sql`.
+4. Aggiungi in Vercel almeno `DATABASE_URL`.
 
 ## AI e notifiche
 
 Per usare AI reale:
 
-- imposta `OPENAI_API_KEY`
-- opzionale: imposta `OPENAI_MODEL`
+- imposta `OPENROUTER_API_KEY`
+- opzionale: imposta `OPENROUTER_MODEL`
 
 Per ricevere email quando un cliente conferma:
 

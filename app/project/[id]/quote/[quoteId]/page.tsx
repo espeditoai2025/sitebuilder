@@ -1,44 +1,51 @@
 import { redirect } from "next/navigation";
 import { CheckCircle2 } from "lucide-react";
 import { confirmQuote } from "@/app/actions";
-import { createClient, hasSupabaseEnv } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth";
+import { hasDatabaseEnv, query } from "@/lib/db";
 
 export default async function QuotePage({
   params
 }: {
   params: Promise<{ id: string; quoteId: string }>;
 }) {
-  if (!hasSupabaseEnv()) {
+  if (!hasDatabaseEnv()) {
     redirect("/setup");
   }
 
   const { id, quoteId } = await params;
-  const supabase = await createClient();
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
+  const user = await getCurrentUser();
 
   if (!user) {
     redirect("/login");
   }
 
-  const { data: project } = await supabase
-    .from("projects")
-    .select("*")
-    .eq("id", id)
-    .eq("user_id", user.id)
-    .single();
+  const [project] = await query<{ id: string }>("select id from projects where id = $1 and user_id = $2 limit 1", [
+    id,
+    user.id
+  ]);
 
   if (!project) {
     redirect("/dashboard");
   }
 
-  const { data: quote } = await supabase
-    .from("quotes")
-    .select("*, proposals(title, variant)")
-    .eq("id", quoteId)
-    .eq("project_id", id)
-    .single();
+  const [quote] = await query<{
+    id: string;
+    price: number;
+    currency: string;
+    timeline: string;
+    scope: unknown;
+    status: string;
+    proposal_title: string;
+    proposal_variant: string;
+  }>(
+    `select quotes.*, proposals.title as proposal_title, proposals.variant as proposal_variant
+     from quotes
+     join proposals on proposals.id = quotes.proposal_id
+     where quotes.id = $1 and quotes.project_id = $2
+     limit 1`,
+    [quoteId, id]
+  );
 
   if (!quote) {
     redirect(`/project/${id}`);
@@ -51,7 +58,7 @@ export default async function QuotePage({
       <span className="badge">{quote.status === "confirmed" ? "Confermato" : "Da confermare"}</span>
       <h1 className="page-title">Preventivo</h1>
       <p className="lead">
-        Proposta scelta: versione {quote.proposals?.variant} - {quote.proposals?.title}
+        Proposta scelta: versione {quote.proposal_variant} - {quote.proposal_title}
       </p>
 
       <section className="grid two">
