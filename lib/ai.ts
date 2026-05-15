@@ -89,7 +89,7 @@ export async function generateProjectIdeas(input: {
       "X-Title": process.env.OPENROUTER_SITE_NAME || "SiteBuilder PCS AI"
     },
     body: JSON.stringify({
-      model: process.env.OPENROUTER_MODEL || "openai/gpt-4o-mini",
+      model: process.env.OPENROUTER_MODEL || "openai/gpt-5.4-mini",
       messages: [{ role: "user", content: prompt }],
       temperature: 0.45,
       max_tokens: 1400
@@ -192,20 +192,40 @@ async function generatePreviewImage(input: {
       })
     });
 
+    const responseText = await response.text().catch(() => "");
+
     if (!response.ok) {
-      const err = await response.text().catch(() => "");
-      console.error(`[generatePreviewImage] ${response.status} from ${model}:`, err);
+      console.error(`[generatePreviewImage] ${response.status} from ${model}:`, responseText.slice(0, 500));
       return null;
     }
 
-    const data = await response.json();
-    const b64 = data.data?.[0]?.b64_json;
+    console.log("[generatePreviewImage] raw response:", responseText.slice(0, 600));
 
-    if (!b64) {
-      console.error("[generatePreviewImage] No b64_json in response:", JSON.stringify(data).slice(0, 300));
+    let data: unknown;
+    try {
+      data = JSON.parse(responseText);
+    } catch {
+      console.error("[generatePreviewImage] Failed to parse JSON:", responseText.slice(0, 300));
+      return null;
     }
 
-    return b64 ? `data:image/png;base64,${b64}` : null;
+    const b64 =
+      (data as { data?: { b64_json?: string }[] }).data?.[0]?.b64_json ??
+      (data as { data?: { b64_json?: string }[] }).data?.[0]?.b64_json;
+
+    const url =
+      (data as { data?: { url?: string }[] }).data?.[0]?.url;
+
+    if (b64) {
+      return `data:image/png;base64,${b64}`;
+    }
+
+    if (url) {
+      return url;
+    }
+
+    console.error("[generatePreviewImage] No image in response. Keys:", Object.keys(data as object).join(", "));
+    return null;
   } catch (err) {
     console.error("[generatePreviewImage] Exception:", err);
     return null;
