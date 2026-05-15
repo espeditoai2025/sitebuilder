@@ -1,14 +1,19 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CheckCircle2, RefreshCw, Search, Sparkles, Wand2 } from "lucide-react";
+import { CheckCircle2, ImageIcon, RefreshCw, Search, Sparkles } from "lucide-react";
 
 const steps = [
   { label: "Scraping sito", description: "Recupero testi, pagine interne e immagini utili.", icon: Search },
   { label: "Analisi AI", description: "Studio stile, contenuti e identita attuale.", icon: Sparkles },
-  { label: "Anteprime HTML", description: "Creo due homepage rinnovate con visual e sezioni reali.", icon: Wand2 },
-  { label: "Salvataggio", description: "Preparo le proposte nella dashboard.", icon: CheckCircle2 }
+  { label: "Generazione proposte", description: "Creo due direzioni di restyling personalizzate.", icon: Sparkles },
+  { label: "Anteprima immagine", description: "Genero il mockup visivo della homepage.", icon: ImageIcon },
+  { label: "Completato", description: "Proposte e anteprima pronte.", icon: CheckCircle2 }
 ];
+
+// step 0-2 = /generate (~30s), step 3 = /generate-image (~40s)
+const IMAGE_STEP = 3;
+const TOTAL_MS = 75000;
 
 export function GenerateButton({ projectId }: { projectId: string }) {
   const [loading, setLoading] = useState(false);
@@ -17,17 +22,14 @@ export function GenerateButton({ projectId }: { projectId: string }) {
   const [progress, setProgress] = useState(0);
 
   useEffect(() => {
-    if (!loading) {
-      return;
-    }
+    if (!loading) return;
 
     const startedAt = Date.now();
     const interval = window.setInterval(() => {
       const elapsed = Date.now() - startedAt;
-      const nextProgress = Math.min(92, Math.round((elapsed / 52000) * 100));
-
+      const nextProgress = Math.min(94, Math.round((elapsed / TOTAL_MS) * 100));
       setProgress(nextProgress);
-      setActiveStep(Math.min(steps.length - 1, Math.floor(nextProgress / 25)));
+      setActiveStep(Math.min(steps.length - 1, Math.floor((nextProgress / 100) * steps.length)));
     }, 600);
 
     return () => window.clearInterval(interval);
@@ -37,18 +39,25 @@ export function GenerateButton({ projectId }: { projectId: string }) {
     setLoading(true);
     setError("");
     setActiveStep(0);
-    setProgress(8);
+    setProgress(4);
 
-    const response = await fetch(`/api/projects/${projectId}/generate`, {
-      method: "POST"
-    });
+    const res = await fetch(`/api/projects/${projectId}/generate`, { method: "POST" });
 
-    if (!response.ok) {
-      const data = await response.json().catch(() => null);
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
       setLoading(false);
       setProgress(0);
       setError(data?.error || "Generazione non riuscita. Controlla URL e configurazione.");
       return;
+    }
+
+    setActiveStep(IMAGE_STEP);
+
+    const imgRes = await fetch(`/api/projects/${projectId}/generate-image`, { method: "POST" });
+
+    if (!imgRes.ok) {
+      // image failed but proposals are ready — reload anyway
+      console.warn("Image generation failed, loading proposals without preview.");
     }
 
     setProgress(100);
@@ -76,7 +85,6 @@ export function GenerateButton({ projectId }: { projectId: string }) {
               const Icon = step.icon;
               const isDone = index < activeStep;
               const isActive = index === activeStep;
-
               return (
                 <div className={`progress-step ${isDone ? "done" : ""} ${isActive ? "active" : ""}`} key={step.label}>
                   <Icon size={18} />
