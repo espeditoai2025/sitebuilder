@@ -2,9 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, hasSupabaseEnv } from "@/lib/supabase/server";
 
 export async function login(formData: FormData) {
+  if (!hasSupabaseEnv()) {
+    redirect("/setup");
+  }
+
   const supabase = await createClient();
   const email = String(formData.get("email") || "");
   const password = String(formData.get("password") || "");
@@ -19,6 +23,10 @@ export async function login(formData: FormData) {
 }
 
 export async function signup(formData: FormData) {
+  if (!hasSupabaseEnv()) {
+    redirect("/setup");
+  }
+
   const supabase = await createClient();
   const email = String(formData.get("email") || "");
   const password = String(formData.get("password") || "");
@@ -42,6 +50,10 @@ export async function signup(formData: FormData) {
 }
 
 export async function logout() {
+  if (!hasSupabaseEnv()) {
+    redirect("/");
+  }
+
   const supabase = await createClient();
   await supabase.auth.signOut();
   revalidatePath("/", "layout");

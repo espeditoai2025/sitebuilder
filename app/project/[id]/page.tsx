@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { ReceiptText } from "lucide-react";
 import { GenerateButton } from "@/components/generate-button";
 import { ProposalCard } from "@/components/proposal-card";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, hasSupabaseEnv } from "@/lib/supabase/server";
 import { formatStatus } from "@/lib/status";
 
 export default async function ProjectPage({
@@ -13,6 +13,10 @@ export default async function ProjectPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ confirmed?: string; error?: string }>;
 }) {
+  if (!hasSupabaseEnv()) {
+    redirect("/setup");
+  }
+
   const { id } = await params;
   const query = await searchParams;
   const supabase = await createClient();

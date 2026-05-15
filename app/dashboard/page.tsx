@@ -1,10 +1,14 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Plus, ArrowRight } from "lucide-react";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, hasSupabaseEnv } from "@/lib/supabase/server";
 import { formatStatus } from "@/lib/status";
 
 export default async function DashboardPage() {
+  if (!hasSupabaseEnv()) {
+    redirect("/setup");
+  }
+
   const supabase = await createClient();
   const {
     data: { user }

@@ -3,9 +3,13 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { buildQuote } from "@/lib/quote";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, hasSupabaseEnv } from "@/lib/supabase/server";
 
 export async function createProject(formData: FormData) {
+  if (!hasSupabaseEnv()) {
+    redirect("/setup");
+  }
+
   const supabase = await createClient();
   const {
     data: { user }
@@ -42,6 +46,10 @@ export async function createProject(formData: FormData) {
 }
 
 export async function selectProposal(formData: FormData) {
+  if (!hasSupabaseEnv()) {
+    redirect("/setup");
+  }
+
   const supabase = await createClient();
   const projectId = String(formData.get("project_id") || "");
   const proposalId = String(formData.get("proposal_id") || "");
@@ -100,6 +108,10 @@ export async function selectProposal(formData: FormData) {
 }
 
 export async function confirmQuote(formData: FormData) {
+  if (!hasSupabaseEnv()) {
+    redirect("/setup");
+  }
+
   const supabase = await createClient();
   const projectId = String(formData.get("project_id") || "");
   const quoteId = String(formData.get("quote_id") || "");

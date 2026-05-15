@@ -1,13 +1,17 @@
 import { redirect } from "next/navigation";
 import { CheckCircle2 } from "lucide-react";
 import { confirmQuote } from "@/app/actions";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, hasSupabaseEnv } from "@/lib/supabase/server";
 
 export default async function QuotePage({
   params
 }: {
   params: Promise<{ id: string; quoteId: string }>;
 }) {
+  if (!hasSupabaseEnv()) {
+    redirect("/setup");
+  }
+
   const { id, quoteId } = await params;
   const supabase = await createClient();
   const {

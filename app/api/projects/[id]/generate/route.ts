@@ -1,12 +1,16 @@
 import { NextResponse } from "next/server";
 import { generateProjectIdeas } from "@/lib/ai";
 import { extractSiteContent } from "@/lib/site-analysis";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, hasSupabaseEnv } from "@/lib/supabase/server";
 
 export async function POST(
   _request: Request,
   context: { params: Promise<{ id: string }> }
 ) {
+  if (!hasSupabaseEnv()) {
+    return NextResponse.json({ error: "Supabase is not configured" }, { status: 500 });
+  }
+
   const { id } = await context.params;
   const supabase = await createClient();
   const {
