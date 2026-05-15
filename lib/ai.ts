@@ -58,6 +58,7 @@ export async function generateProjectIdeas(input: {
     "Usa le immagini disponibili del sito originale se sono coerenti: hero fotografico, categorie, prodotti, team o luogo.",
     "Non inventare URL immagini. Puoi usare solo URL presenti in Immagini disponibili. Se non ci sono immagini buone, crea un visual CSS curato.",
     "Cura molto la qualita visuale: header completo, hero fotografico o editoriale, categorie/servizi, storia o proof, CTA e footer.",
+    "I link dell'anteprima devono essere solo anchor interne come #servizi, #chi-siamo, #contatti. Non usare URL relativi come /contatti o /dove-siamo.",
     "La preview deve sembrare una homepage completa, non un wireframe.",
     "",
     "Rispondi solo con questo schema JSON:",
