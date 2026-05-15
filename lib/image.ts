@@ -52,12 +52,15 @@ async function viaImagesApi(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
+  // DALL-E 3 supports 1792x1024; gpt-image-1 / others use 1536x1024
+  const size = model.includes("dall-e-3") ? "1792x1024" : "1536x1024";
+
   try {
     const res = await fetch(`${BASE}/images/generations`, {
       method: "POST",
       headers,
       signal: controller.signal,
-      body: JSON.stringify({ model, prompt, n: 1, size: "1792x1024", response_format: "b64_json" })
+      body: JSON.stringify({ model, prompt, n: 1, size, quality: "medium", response_format: "b64_json" })
     });
 
     clearTimeout(timer);
@@ -82,6 +85,39 @@ async function viaImagesApi(
   }
 }
 
+function extractImageFromContent(content: unknown): string | null {
+  if (typeof content === "string") {
+    if (content.startsWith("data:image")) return content;
+    if (content.startsWith("http")) return content;
+    if (content.length > 200 && /^[A-Za-z0-9+/]+=*$/.test(content.slice(0, 40))) {
+      return `data:image/png;base64,${content}`;
+    }
+  }
+  if (Array.isArray(content)) {
+    for (const part of content as Record<string, unknown>[]) {
+      if (part.type === "image_url") {
+        const url = (part.image_url as { url?: string } | undefined)?.url;
+        if (url) return url;
+      }
+      if (part.type === "image_generation_call") {
+        // Responses API tool output
+        const result = part.result as { data?: string; url?: string } | undefined;
+        if (result?.data) return `data:image/png;base64,${result.data}`;
+        if (result?.url) return result.url;
+      }
+      if (part.type === "image") {
+        const b64 =
+          (part as { source?: { data?: string } }).source?.data ??
+          (part as { data?: string }).data;
+        if (b64) return `data:image/png;base64,${b64}`;
+      }
+    }
+  }
+  return null;
+}
+
+// For gpt-5-image-mini and similar Responses API models:
+// use chat/completions with tools:[{type:"image_generation"}]
 async function viaChatCompletions(
   model: string,
   prompt: string,
@@ -97,7 +133,8 @@ async function viaChatCompletions(
       signal: controller.signal,
       body: JSON.stringify({
         model,
-        messages: [{ role: "user", content: prompt }]
+        messages: [{ role: "user", content: prompt }],
+        tools: [{ type: "image_generation" }]
       })
     });
 
@@ -110,32 +147,39 @@ async function viaChatCompletions(
     }
 
     const json = JSON.parse(text) as {
-      choices?: { message?: { content?: unknown } }[];
+      choices?: {
+        message?: {
+          content?: unknown;
+          tool_calls?: { type: string; id: string; image_generation?: { data?: string; url?: string } }[];
+        };
+      }[];
+      output?: unknown[];
     };
-    const content = json.choices?.[0]?.message?.content;
 
-    // plain string: data URL or http URL
-    if (typeof content === "string") {
-      if (content.startsWith("data:image")) return content;
-      if (content.startsWith("http")) return content;
-      // base64 without prefix
-      if (content.length > 200 && /^[A-Za-z0-9+/]+=*$/.test(content.slice(0, 40))) {
-        return `data:image/png;base64,${content}`;
+    // 1. Check tool_calls (Responses API style via chat wrapper)
+    const toolCalls = json.choices?.[0]?.message?.tool_calls;
+    if (Array.isArray(toolCalls)) {
+      for (const call of toolCalls) {
+        if (call.image_generation?.data) return `data:image/png;base64,${call.image_generation.data}`;
+        if (call.image_generation?.url) return call.image_generation.url;
       }
     }
 
-    // content array (multimodal response)
-    if (Array.isArray(content)) {
-      for (const part of content as Record<string, unknown>[]) {
-        if (part.type === "image_url") {
-          const url = (part.image_url as { url?: string } | undefined)?.url;
-          if (url) return url;
+    // 2. Check message content
+    const content = json.choices?.[0]?.message?.content;
+    const fromContent = extractImageFromContent(content);
+    if (fromContent) return fromContent;
+
+    // 3. Check output array (native Responses API shape)
+    if (Array.isArray(json.output)) {
+      for (const item of json.output as Record<string, unknown>[]) {
+        if (item.type === "image_generation_call") {
+          const d = (item as { result?: { data?: string; url?: string } }).result;
+          if (d?.data) return `data:image/png;base64,${d.data}`;
+          if (d?.url) return d.url;
         }
-        if (part.type === "image") {
-          const b64 = (part as { source?: { data?: string }; data?: string }).source?.data
-            ?? (part as { data?: string }).data;
-          if (b64) return `data:image/png;base64,${b64}`;
-        }
+        const fromItem = extractImageFromContent(item.content);
+        if (fromItem) return fromItem;
       }
     }
 
@@ -159,7 +203,7 @@ export async function generatePreviewImage(input: {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) return null;
 
-  const model = process.env.OPENROUTER_IMAGE_MODEL || "openai/dall-e-3";
+  const model = process.env.OPENROUTER_IMAGE_MODEL || "openai/gpt-5-image-mini";
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
   const siteName = process.env.OPENROUTER_SITE_NAME || "SiteBuilder PCS AI";
 
