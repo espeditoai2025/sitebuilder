@@ -84,7 +84,7 @@ export async function generateProjectIdeas(input: {
       "X-Title": process.env.OPENROUTER_SITE_NAME || "SiteBuilder PCS AI"
     },
     body: JSON.stringify({
-      model: process.env.OPENROUTER_MODEL || "openai/gpt-5.4-mini",
+      model: process.env.OPENROUTER_MODEL || "openai/gpt-4o-mini",
       messages: [{ role: "user", content: prompt }],
       temperature: 0.45,
       max_tokens: 1400
@@ -92,6 +92,8 @@ export async function generateProjectIdeas(input: {
   });
 
   if (!response.ok) {
+    const errText = await response.text().catch(() => "");
+    console.error(`[ai] OpenRouter error ${response.status}:`, errText.slice(0, 400));
     return buildFallbackResult(input);
   }
 
@@ -99,12 +101,14 @@ export async function generateProjectIdeas(input: {
   const text = data.choices?.[0]?.message?.content;
 
   if (!text) {
+    console.error("[ai] OpenRouter returned no text:", JSON.stringify(data).slice(0, 300));
     return buildFallbackResult(input);
   }
 
   try {
     return JSON.parse(extractJson(text)) as GeneratedResult;
-  } catch {
+  } catch (parseErr) {
+    console.error("[ai] JSON parse failed:", parseErr, "raw:", text.slice(0, 300));
     return buildFallbackResult(input);
   }
 }
