@@ -11,6 +11,7 @@ type Proposal = {
   visual_style: unknown;
   palette: unknown;
   copy: unknown;
+  preview_data: unknown;
   is_selected: boolean;
 };
 
@@ -18,6 +19,8 @@ export function ProposalCard({ proposal }: { proposal: Proposal }) {
   const palette = Array.isArray(proposal.palette) ? proposal.palette.slice(0, 4) : [];
   const structure = Array.isArray(proposal.homepage_structure) ? proposal.homepage_structure : [];
   const copy = isRecord(proposal.copy) ? proposal.copy : {};
+  const preview = isRecord(proposal.preview_data) ? proposal.preview_data : {};
+  const previewHtml = typeof preview.html === "string" ? preview.html : "";
 
   return (
     <article className="card proposal-preview">
@@ -27,16 +30,25 @@ export function ProposalCard({ proposal }: { proposal: Proposal }) {
         <p className="muted">{proposal.description}</p>
       </div>
 
-      <div className="mockup">
-        <div className="mockup-hero" style={{ background: String(palette[0] || "#16324f"), color: String(palette[1] || "#ffffff") }}>
-          <h3>{String(copy.hero_title || proposal.title)}</h3>
-          <p>{String(copy.hero_subtitle || proposal.description)}</p>
-          <span className="badge">{String(copy.cta || "Contattaci")}</span>
-        </div>
-        <div className="mockup-lines">
-          <span className="mockup-line" />
-          <span className="mockup-line short" />
-          <span className="mockup-line" />
+      <div className="preview-frame-shell">
+        {previewHtml ? (
+          <iframe className="preview-frame" sandbox="" srcDoc={previewHtml} title={`Anteprima versione ${proposal.variant}`} />
+        ) : (
+          <div className="mockup">
+            <div className="mockup-hero" style={{ background: String(palette[0] || "#16324f"), color: String(palette[1] || "#ffffff") }}>
+              <h3>{String(copy.hero_title || proposal.title)}</h3>
+              <p>{String(copy.hero_subtitle || proposal.description)}</p>
+              <span className="badge">{String(copy.cta || "Contattaci")}</span>
+            </div>
+            <div className="mockup-lines">
+              <span className="mockup-line" />
+              <span className="mockup-line short" />
+              <span className="mockup-line" />
+            </div>
+          </div>
+        )}
+        <div className="preview-frame-footer">
+          <span>Anteprima HTML reale della homepage</span>
         </div>
       </div>
 

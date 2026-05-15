@@ -2,7 +2,9 @@ import { NextResponse } from "next/server";
 import { generateProjectIdeas } from "@/lib/ai";
 import { getCurrentUser } from "@/lib/auth";
 import { hasDatabaseEnv, query } from "@/lib/db";
-import { extractSiteContent } from "@/lib/site-analysis";
+import { scrapeWebsite } from "@/lib/site-analysis";
+
+export const maxDuration = 60;
 
 export async function POST(
   _request: Request,
@@ -33,8 +35,7 @@ export async function POST(
 
   await query("update projects set status = 'analyzing', updated_at = now() where id = $1", [id]);
 
-  const html = await fetchWebsite(project.website_url);
-  const content = extractSiteContent(html);
+  const content = await scrapeWebsite(project.website_url, 5);
 
   await query("update projects set status = 'generating_proposals', updated_at = now() where id = $1", [id]);
 
@@ -82,28 +83,4 @@ export async function POST(
   await query("update projects set status = 'proposals_ready', updated_at = now() where id = $1", [id]);
 
   return NextResponse.json({ ok: true });
-}
-
-async function fetchWebsite(url: string) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 12000);
-
-  try {
-    const response = await fetch(url, {
-      signal: controller.signal,
-      headers: {
-        "User-Agent": "SiteBuilderAI/0.1"
-      }
-    });
-
-    if (!response.ok) {
-      return "";
-    }
-
-    return await response.text();
-  } catch {
-    return "";
-  } finally {
-    clearTimeout(timeout);
-  }
 }

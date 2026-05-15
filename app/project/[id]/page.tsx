@@ -55,6 +55,7 @@ export default async function ProjectPage({
       visual_style: unknown;
       palette: unknown;
       copy: unknown;
+      preview_data: unknown;
       is_selected: boolean;
     }>("select * from proposals where project_id = $1 order by variant asc", [id]),
     dbQuery<{ id: string }>("select * from quotes where project_id = $1 order by created_at desc limit 1", [id])

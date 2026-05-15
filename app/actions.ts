@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { getCurrentUser } from "@/lib/auth";
+import { createSession, getCurrentUser, hashPassword, verifyPassword, type AppUser } from "@/lib/auth";
 import { hasDatabaseEnv, query } from "@/lib/db";
 import { buildQuote } from "@/lib/quote";
 
@@ -11,11 +11,7 @@ export async function createProject(formData: FormData) {
     redirect("/setup");
   }
 
-  const user = await getCurrentUser();
-
-  if (!user) {
-    redirect("/login");
-  }
+  const user = await getWizardUser(formData);
 
   const websiteUrl = normalizeUrl(String(formData.get("website_url") || ""));
   const businessName = String(formData.get("business_name") || "");
@@ -151,4 +147,53 @@ async function sendOwnerEmail(input: { websiteUrl: string; projectId: string }) 
       html: `<p>Un cliente ha confermato il preventivo per <strong>${input.websiteUrl}</strong>.</p><p>Project ID: ${input.projectId}</p>`
     })
   });
+}
+
+async function getWizardUser(formData: FormData): Promise<AppUser> {
+  const currentUser = await getCurrentUser();
+
+  if (currentUser) {
+    return currentUser;
+  }
+
+  const fullName = String(formData.get("full_name") || "").trim();
+  const email = String(formData.get("email") || "").trim().toLowerCase();
+  const password = String(formData.get("password") || "");
+
+  if (!email || password.length < 8) {
+    redirect("/new-project?error=Completa email e password di almeno 8 caratteri per salvare il progetto");
+  }
+
+  const existingUsers = await query<AppUser & { password_hash: string }>(
+    "select id, email, full_name, role, password_hash from app_users where email = $1 limit 1",
+    [email]
+  );
+  const existingUser = existingUsers[0];
+
+  if (existingUser) {
+    const passwordMatches = await verifyPassword(password, existingUser.password_hash);
+
+    if (!passwordMatches) {
+      redirect("/new-project?error=Email gia registrata. Inserisci la password corretta oppure accedi");
+    }
+
+    await createSession(existingUser.id);
+    return {
+      id: existingUser.id,
+      email: existingUser.email,
+      full_name: existingUser.full_name,
+      role: existingUser.role
+    };
+  }
+
+  const passwordHash = await hashPassword(password);
+  const [newUser] = await query<AppUser>(
+    `insert into app_users (email, password_hash, full_name)
+     values ($1, $2, $3)
+     returning id, email, full_name, role`,
+    [email, passwordHash, fullName || null]
+  );
+
+  await createSession(newUser.id);
+  return newUser;
 }
