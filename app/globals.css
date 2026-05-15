@@ -608,11 +608,11 @@ textarea {
 }
 
 .preview-frame {
-  background: white;
   border: 0;
   display: block;
   height: 520px;
-  transform-origin: top left;
+  object-fit: cover;
+  object-position: top;
   width: 100%;
 }
 

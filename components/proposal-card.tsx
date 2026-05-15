@@ -20,8 +20,7 @@ export function ProposalCard({ proposal }: { proposal: Proposal }) {
   const structure = Array.isArray(proposal.homepage_structure) ? proposal.homepage_structure : [];
   const copy = isRecord(proposal.copy) ? proposal.copy : {};
   const preview = isRecord(proposal.preview_data) ? proposal.preview_data : {};
-  const previewHtml = typeof preview.html === "string" ? preview.html : "";
-  const safePreviewHtml = previewHtml ? sanitizePreviewHtml(previewHtml) : "";
+  const previewImage = typeof preview.image === "string" ? preview.image : "";
 
   return (
     <article className="card proposal-preview">
@@ -32,8 +31,13 @@ export function ProposalCard({ proposal }: { proposal: Proposal }) {
       </div>
 
       <div className="preview-frame-shell">
-        {safePreviewHtml ? (
-          <iframe className="preview-frame" sandbox="" srcDoc={safePreviewHtml} title={`Anteprima versione ${proposal.variant}`} />
+        {previewImage ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            alt={`Anteprima versione ${proposal.variant}`}
+            className="preview-frame"
+            src={previewImage}
+          />
         ) : (
           <div className="mockup">
             <div className="mockup-hero" style={{ background: String(palette[0] || "#16324f"), color: String(palette[1] || "#ffffff") }}>
@@ -49,7 +53,7 @@ export function ProposalCard({ proposal }: { proposal: Proposal }) {
           </div>
         )}
         <div className="preview-frame-footer">
-          <span>Anteprima HTML reale della homepage</span>
+          <span>Anteprima homepage generata da AI</span>
         </div>
       </div>
 
@@ -92,28 +96,4 @@ export function ProposalCard({ proposal }: { proposal: Proposal }) {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
-}
-
-function sanitizePreviewHtml(html: string) {
-  const sanitizedLinks = html.replace(/\s(href)=["']([^"']*)["']/gi, (_match, attr: string, href: string) => {
-    const normalized = href.trim().toLowerCase();
-
-    if (normalized.startsWith("#") || normalized.startsWith("mailto:") || normalized.startsWith("tel:")) {
-      return ` ${attr}="${escapeAttribute(href)}"`;
-    }
-
-    return ` ${attr}="#preview"`;
-  });
-
-  const previewBase = `<base href="about:srcdoc" target="_self"><style>a{cursor:pointer}</style>`;
-
-  if (sanitizedLinks.includes("</head>")) {
-    return sanitizedLinks.replace("</head>", `${previewBase}</head>`);
-  }
-
-  return `${previewBase}${sanitizedLinks}`;
-}
-
-function escapeAttribute(value: string) {
-  return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
 }
