@@ -176,7 +176,7 @@ async function generatePreviewImage(input: {
   try {
     const model = process.env.OPENROUTER_IMAGE_MODEL || "openai/gpt-5-image-mini";
 
-    const response = await fetch("https://openrouter.ai/api/v1/images/generations", {
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -186,45 +186,53 @@ async function generatePreviewImage(input: {
       },
       body: JSON.stringify({
         model,
-        prompt,
-        n: 1,
-        size: "1536x1024"
+        messages: [{ role: "user", content: prompt }]
       })
     });
 
     const responseText = await response.text().catch(() => "");
 
     if (!response.ok) {
-      console.error(`[generatePreviewImage] ${response.status} from ${model}:`, responseText.slice(0, 500));
+      console.error(`[generatePreviewImage] ${response.status} from ${model}:`, responseText.slice(0, 400));
       return null;
     }
-
-    console.log("[generatePreviewImage] raw response:", responseText.slice(0, 600));
 
     let data: unknown;
     try {
       data = JSON.parse(responseText);
     } catch {
-      console.error("[generatePreviewImage] Failed to parse JSON:", responseText.slice(0, 300));
+      console.error("[generatePreviewImage] Failed to parse JSON:", responseText.slice(0, 200));
       return null;
     }
 
-    const b64 =
-      (data as { data?: { b64_json?: string }[] }).data?.[0]?.b64_json ??
-      (data as { data?: { b64_json?: string }[] }).data?.[0]?.b64_json;
+    // gpt-5-image-mini returns image inside choices[0].message.content
+    // content can be a string (data URL) or an array of content parts
+    const content = (data as { choices?: { message?: { content?: unknown } }[] }).choices?.[0]?.message?.content;
 
-    const url =
-      (data as { data?: { url?: string }[] }).data?.[0]?.url;
-
-    if (b64) {
-      return `data:image/png;base64,${b64}`;
+    if (typeof content === "string") {
+      // data:image/png;base64,... returned directly
+      if (content.startsWith("data:image")) {
+        return content;
+      }
+      // URL returned as plain string
+      if (content.startsWith("http")) {
+        return content;
+      }
     }
 
-    if (url) {
-      return url;
+    if (Array.isArray(content)) {
+      for (const part of content) {
+        if (part?.type === "image_url") {
+          return part.image_url?.url ?? null;
+        }
+        if (part?.type === "image") {
+          const b64 = part.source?.data ?? part.data;
+          if (b64) return `data:image/png;base64,${b64}`;
+        }
+      }
     }
 
-    console.error("[generatePreviewImage] No image in response. Keys:", Object.keys(data as object).join(", "));
+    console.error("[generatePreviewImage] Unexpected response structure:", responseText.slice(0, 400));
     return null;
   } catch (err) {
     console.error("[generatePreviewImage] Exception:", err);
