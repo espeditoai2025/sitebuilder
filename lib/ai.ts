@@ -174,6 +174,8 @@ async function generatePreviewImage(input: {
   ].join(" ");
 
   try {
+    const model = process.env.OPENROUTER_IMAGE_MODEL || "openai/gpt-5-image-mini";
+
     const response = await fetch("https://openrouter.ai/api/v1/images/generations", {
       method: "POST",
       headers: {
@@ -183,7 +185,7 @@ async function generatePreviewImage(input: {
         "X-Title": process.env.OPENROUTER_SITE_NAME || "SiteBuilder PCS AI"
       },
       body: JSON.stringify({
-        model: process.env.OPENROUTER_IMAGE_MODEL || "openai/gpt-image-1",
+        model,
         prompt,
         n: 1,
         size: "1536x1024"
@@ -191,14 +193,21 @@ async function generatePreviewImage(input: {
     });
 
     if (!response.ok) {
+      const err = await response.text().catch(() => "");
+      console.error(`[generatePreviewImage] ${response.status} from ${model}:`, err);
       return null;
     }
 
     const data = await response.json();
     const b64 = data.data?.[0]?.b64_json;
 
+    if (!b64) {
+      console.error("[generatePreviewImage] No b64_json in response:", JSON.stringify(data).slice(0, 300));
+    }
+
     return b64 ? `data:image/png;base64,${b64}` : null;
-  } catch {
+  } catch (err) {
+    console.error("[generatePreviewImage] Exception:", err);
     return null;
   }
 }
