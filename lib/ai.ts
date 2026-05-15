@@ -122,7 +122,7 @@ export async function generatePreviewImage(input: {
   }
 
   const [dark, light, accent] = input.palette;
-  const model = process.env.OPENROUTER_IMAGE_MODEL || "openai/gpt-5-image-mini";
+  const model = process.env.OPENROUTER_IMAGE_MODEL || "openai/gpt-image-1";
 
   const prompt = [
     `Professional website homepage mockup, full desktop screenshot, no browser chrome, no device frame.`,
@@ -137,7 +137,7 @@ export async function generatePreviewImage(input: {
   ].join(" ");
 
   try {
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    const response = await fetch("https://openrouter.ai/api/v1/images/generations", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -147,7 +147,10 @@ export async function generatePreviewImage(input: {
       },
       body: JSON.stringify({
         model,
-        messages: [{ role: "user", content: prompt }]
+        prompt,
+        n: 1,
+        size: "1536x1024",
+        response_format: "b64_json"
       })
     });
 
@@ -166,24 +169,13 @@ export async function generatePreviewImage(input: {
       return null;
     }
 
-    const content = (data as { choices?: { message?: { content?: unknown } }[] }).choices?.[0]?.message?.content;
+    const b64 = (data as { data?: { b64_json?: string }[] }).data?.[0]?.b64_json;
+    const url = (data as { data?: { url?: string }[] }).data?.[0]?.url;
 
-    if (typeof content === "string") {
-      if (content.startsWith("data:image")) return content;
-      if (content.startsWith("http")) return content;
-    }
+    if (b64) return `data:image/png;base64,${b64}`;
+    if (url) return url;
 
-    if (Array.isArray(content)) {
-      for (const part of content) {
-        if (part?.type === "image_url") return part.image_url?.url ?? null;
-        if (part?.type === "image") {
-          const b64 = part.source?.data ?? part.data;
-          if (b64) return `data:image/png;base64,${b64}`;
-        }
-      }
-    }
-
-    console.error("[generatePreviewImage] Unexpected response:", responseText.slice(0, 400));
+    console.error("[generatePreviewImage] No image in response:", responseText.slice(0, 400));
     return null;
   } catch (err) {
     console.error("[generatePreviewImage] Exception:", err);
