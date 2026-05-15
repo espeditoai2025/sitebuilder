@@ -117,68 +117,51 @@ export async function generatePreviewImage(input: {
   palette: string[];
   sections: string[];
 }): Promise<string | null> {
-  if (!process.env.OPENROUTER_API_KEY) {
-    return null;
-  }
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) return null;
 
   const [dark, light, accent] = input.palette;
-  const model = process.env.OPENROUTER_IMAGE_MODEL || "openai/gpt-image-1";
+  const model = process.env.OPENROUTER_IMAGE_MODEL || "openai/dall-e-3";
 
-  const prompt = [
-    `Professional website homepage mockup, full desktop screenshot, no browser chrome, no device frame.`,
-    `Business name: "${input.name}".`,
-    `Design style: modern, clean, professional web design.`,
-    `Color palette: primary background ${light}, dark text/elements ${dark}, accent color ${accent}.`,
-    `Layout: sticky header with brand logo "${input.name}" on left and navigation links on right.`,
-    `Hero section: large bold headline "${input.title}", descriptive subtitle "${input.subtitle}", prominent CTA button "${input.cta}" in accent color ${accent}.`,
-    `Below hero: visible section previews for ${input.sections.slice(0, 3).join(", ")}.`,
-    `Footer with brand name and contact info.`,
-    `High quality, pixel-perfect UI design, full-width layout, realistic web design screenshot.`
-  ].join(" ");
+  const prompt =
+    `Flat UI design, full-width website homepage screenshot, desktop view, no browser chrome. ` +
+    `Company: "${input.name}". ` +
+    `Top navigation bar with logo on left, menu links on right. ` +
+    `Large hero section: headline "${input.title}", subheadline "${input.subtitle}", ` +
+    `solid CTA button labeled "${input.cta}". ` +
+    `Three content cards below hero showing: ${input.sections.slice(0, 3).join(", ")}. ` +
+    `Color scheme: background ${light}, text ${dark}, accent ${accent}. ` +
+    `Clean grid layout, professional typography, no placeholder text.`;
 
   try {
-    const response = await fetch("https://openrouter.ai/api/v1/images/generations", {
+    const res = await fetch("https://openrouter.ai/api/v1/images/generations", {
       method: "POST",
       headers: {
+        Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
-        "HTTP-Referer": process.env.OPENROUTER_SITE_URL || process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000",
-        "X-Title": process.env.OPENROUTER_SITE_NAME || "SiteBuilder PCS AI"
+        "HTTP-Referer": process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000",
+        "X-Title": "SiteBuilder PCS AI"
       },
-      body: JSON.stringify({
-        model,
-        prompt,
-        n: 1,
-        size: "1536x1024",
-        response_format: "b64_json"
-      })
+      body: JSON.stringify({ model, prompt, n: 1, size: "1792x1024", response_format: "b64_json" })
     });
 
-    const responseText = await response.text().catch(() => "");
+    const body = await res.text();
 
-    if (!response.ok) {
-      console.error(`[generatePreviewImage] ${response.status} from ${model}:`, responseText.slice(0, 400));
+    if (!res.ok) {
+      console.error(`[image] ${res.status} ${model}:`, body.slice(0, 300));
       return null;
     }
 
-    let data: unknown;
-    try {
-      data = JSON.parse(responseText);
-    } catch {
-      console.error("[generatePreviewImage] JSON parse error:", responseText.slice(0, 200));
-      return null;
-    }
+    const json = JSON.parse(body) as { data?: { b64_json?: string; url?: string }[] };
+    const item = json.data?.[0];
 
-    const b64 = (data as { data?: { b64_json?: string }[] }).data?.[0]?.b64_json;
-    const url = (data as { data?: { url?: string }[] }).data?.[0]?.url;
+    if (item?.b64_json) return `data:image/png;base64,${item.b64_json}`;
+    if (item?.url) return item.url;
 
-    if (b64) return `data:image/png;base64,${b64}`;
-    if (url) return url;
-
-    console.error("[generatePreviewImage] No image in response:", responseText.slice(0, 400));
+    console.error("[image] no image data:", body.slice(0, 300));
     return null;
   } catch (err) {
-    console.error("[generatePreviewImage] Exception:", err);
+    console.error("[image] exception:", err);
     return null;
   }
 }
