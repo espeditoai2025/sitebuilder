@@ -109,62 +109,7 @@ export async function generateProjectIdeas(input: {
   }
 }
 
-export async function generatePreviewImage(input: {
-  name: string;
-  title: string;
-  subtitle: string;
-  cta: string;
-  palette: string[];
-  sections: string[];
-}): Promise<string | null> {
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey) return null;
-
-  const [dark, light, accent] = input.palette;
-  const model = process.env.OPENROUTER_IMAGE_MODEL || "openai/dall-e-3";
-
-  const prompt =
-    `Flat UI design, full-width website homepage screenshot, desktop view, no browser chrome. ` +
-    `Company: "${input.name}". ` +
-    `Top navigation bar with logo on left, menu links on right. ` +
-    `Large hero section: headline "${input.title}", subheadline "${input.subtitle}", ` +
-    `solid CTA button labeled "${input.cta}". ` +
-    `Three content cards below hero showing: ${input.sections.slice(0, 3).join(", ")}. ` +
-    `Color scheme: background ${light}, text ${dark}, accent ${accent}. ` +
-    `Clean grid layout, professional typography, no placeholder text.`;
-
-  try {
-    const res = await fetch("https://openrouter.ai/api/v1/images/generations", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000",
-        "X-Title": "SiteBuilder PCS AI"
-      },
-      body: JSON.stringify({ model, prompt, n: 1, size: "1792x1024", response_format: "b64_json" })
-    });
-
-    const body = await res.text();
-
-    if (!res.ok) {
-      console.error(`[image] ${res.status} ${model}:`, body.slice(0, 300));
-      return null;
-    }
-
-    const json = JSON.parse(body) as { data?: { b64_json?: string; url?: string }[] };
-    const item = json.data?.[0];
-
-    if (item?.b64_json) return `data:image/png;base64,${item.b64_json}`;
-    if (item?.url) return item.url;
-
-    console.error("[image] no image data:", body.slice(0, 300));
-    return null;
-  } catch (err) {
-    console.error("[image] exception:", err);
-    return null;
-  }
-}
+export { generatePreviewImage } from "./image";
 
 function extractJson(text: string) {
   const trimmed = text.trim();
